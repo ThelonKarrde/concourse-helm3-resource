@@ -1,0 +1,321 @@
+#!/bin/bash
+
+set -e
+set -o pipefail
+
+exec 3>&1 # make stdout available as fd 3 for the result
+exec 1>&2 # redirect all output to stderr for logging
+
+source /opt/resource/common.sh
+
+# Read inputs
+source=$1
+payload=$(mktemp helm-resource-request.XXXXXX)
+cat > $payload <&0
+
+# Prepare
+setup_resource $payload $source
+setup_repos $payload $source 
+echo "Resource setup successful."
+
+namespace=$(jq -r '.source.namespace // "default"' < $payload)
+release=$(jq -r '.source.release // ""' < $payload)
+chart=$(jq -r '.params.chart // ""' < $payload)
+version=$(jq -r '.params.version // ""' < $payload)
+namespace_overwrite=$(jq -r '.params.namespace // ""' < $payload)
+create_namespace=$(jq -r '.params.create_namespace // "false"' < $payload)
+atomic=$(jq -r '.params.atomic // "false"' < $payload)
+release_overwrite=$(jq -r '.params.release // ""' < $payload)
+values=$(jq -r '.params.values // "" | if type == "array" then .[] else . end' < $payload)
+debug=$(jq -r '.params.debug // "false"' < $payload)
+replace=$(jq -r '.params.replace // "false"' < $payload)
+uninstall=$(jq -r '.params.uninstall // "false"' < $payload)
+delete_namespace=$(jq -r '.params.delete_namespace // "false"' < $payload)
+test=$(jq -r '.params.test // "false"' < $payload)
+test_logs=$(jq -r '.params.test_logs // "false"' < $payload)
+devel=$(jq -r '.params.devel // "false"' < $payload)
+force=$(jq -r '.params.force // "false"' < $payload)
+show_diff=$(jq -r '.params.show_diff // "false"' < $payload)
+post_renderer=$(jq -r '.params.post_renderer // ""' < $payload)
+reuse_values=$(jq -r '.params.reuse_values // "false"' < $payload)
+reset_values=$(jq -r '.params.reset_values // "false"' < $payload)
+wait=$(jq -r '.params.wait // 0' < $payload)
+check_is_ready=$(jq -r '.params.check_is_ready // "false"' < $payload)
+timeout=$(jq -r '.params.timeout // "5m0s"' < $payload)
+skip_missing_values=$(jq -r '.params.skip_missing_values // "false"' < $payload)
+
+if [[ "$test" == "false" ]] && [[ "$uninstall" == "false" ]] && [ -z "$chart" ] ; then
+  echo "invalid payload (missing chart)"
+  exit 1
+fi
+
+if [[ "$test" == "true" ]] && [[ "$uninstall" == "true" ]] ; then
+  echo "invalid payload ( test and uninstall cannot both be true )"
+  exit 1
+fi
+
+if [[ "$test" == "true" ]] && [[ "$replace" == "true" ]] ; then
+  echo "invalid payload ( test and replace cannot both be true )"
+  exit 1
+fi
+
+if [[ "$uninstall" == "true" ]] && [[ "$replace" == "true" ]] ; then
+  echo "invalid payload ( uninstall and replace cannot both be true )"
+  exit 1
+fi
+
+if [ -f "$source/$namespace_overwrite" ]; then
+  namespace=$(cat $source/$namespace_overwrite)
+elif [ -n "$namespace_overwrite" ]; then
+  namespace=$namespace_overwrite
+fi
+
+if [ -f "$source/$release_overwrite" ]; then
+  release=$(cat $source/$release_overwrite)
+elif [ -n "$release_overwrite" ]; then
+  release=$release_overwrite
+fi
+
+if [[ "$chart" == *.tgz ]] || [[ -d "$source/$chart" ]]; then
+  # it's a file/directory
+  chart_full="$source/$chart"
+  version=""
+else
+  # get from a repo
+  chart_full="$chart"
+fi
+
+set_overridden_values() {
+  while read -r -d '' key && read -r -d '' value && read -r -d '' path && read -r -d '' hidden && read -r -d '' type && read -r -d '' verbatim; do
+    if [ -n "$path" ]; then
+      value="$(< "$source/$path")"
+    fi
+
+    if [ "$verbatim" != 'false' ]; then
+      value="${value/\\/\\\\}"
+    fi
+
+    scrubbed_value="$value"
+    if [ "$hidden" != 'false' ]; then
+      scrubbed_value='***HIDDEN***'
+    fi
+
+    helm_set_opt='--set'
+    if [ "$type" == 'string' ]; then
+      helm_set_opt='--set-string'
+    fi
+
+    overridden_args+=("$helm_set_opt" "$key=$value")
+    scrubbed_overridden_args+=("$helm_set_opt" "$key=$scrubbed_value")
+  done < <(jq -j '.params.override_values[]? | if has("key") and (has("value") or has("path")) then (.key, .value // "", .path // "", .hide // false, .type, .verbatim // false) else empty end | tostring + "\u0000"'  < $payload)
+}
+
+current_deployed() {
+  local release="$1"
+  # The rest LGTM but we need --max 20 to get the last DEPLOYED release and not end up with a rolled back release being the last one.
+  $helm_bin history --max 20 $release --namespace $namespace | grep -i "DEPLOYED"
+}
+
+helm_upgrade() {
+  if [ "$release" == "" ]; then
+    upgrade_args=("install" $chart_full "--generate-name" "--namespace=$namespace")
+  else
+    upgrade_args=("upgrade" "$release" $chart_full "--install" "--namespace=$namespace")
+  fi
+  upgrade_diff_args=("upgrade" "$release" $chart_full "--install" "--namespace=$namespace")
+
+  if [ -n "$values" ]; then
+    for value in $values; do
+      if [ "$skip_missing_values" == "true" ]; then
+        if [ -f "$source/$value" ]; then
+          upgrade_args+=("-f" "$source/"$value)
+          upgrade_diff_args+=("-f" "$source/"$value)
+        else
+          echo "skipping missing values file $source/$value"
+        fi
+      else
+        upgrade_args+=("-f" "$source/"$value)
+        upgrade_diff_args+=("-f" "$source/"$value)
+      fi
+    done
+  fi
+
+  overridden_args=()
+  scrubbed_overridden_args=()
+  set_overridden_values
+
+  if [ "$create_namespace" == "true" ]; then
+    upgrade_args+=("--create-namespace")
+  fi
+
+  if [ "$check_is_ready" == "true" ]; then
+    upgrade_args+=("--wait")
+  fi
+
+  if [ "$atomic" == "true" ]; then
+    upgrade_args+=("--atomic")
+  fi
+
+  if [ "$debug" == "true" ]; then
+    upgrade_args+=("--debug")
+    upgrade_args+=("--dry-run")
+    upgrade_diff_args+=("--dry-run")
+  fi
+
+  if [ -n "$version" ]; then
+    if [ -f "$source/$version" ]; then
+      version=$(cat $source/$version)
+    fi
+    upgrade_args+=("--version" "$version")
+    upgrade_diff_args+=("--version" "$version")
+  fi
+
+  if [ "$cleanup_on_fail" == "true" ]; then
+    upgrade_args+=("--cleanup-on-fail")
+  fi
+
+  if [ "$force" == "true" ]; then
+    upgrade_args+=("--force")
+  fi
+
+  if [ -n "$post_renderer" ]; then
+    upgrade_args+=("--post-renderer" "$chart_full/$post_renderer")
+    upgrade_diff_args+=("--post-renderer" "$chart_full/$post_renderer")
+  fi
+
+  if [ "$reuse_values" == "true" ]; then
+    upgrade_args+=("--reuse-values")
+    upgrade_diff_args+=("--reuse-values")
+  fi
+
+  if [ "$reset_values" == "true" ]; then
+    upgrade_args+=("--reset-values")
+    upgrade_diff_args+=("--reset-values")
+  fi
+
+  if [ "$devel" == "true" ]; then
+    upgrade_args+=("--devel")
+    upgrade_diff_args+=("--devel")
+  fi
+
+  upgrade_args+=("--timeout=${timeout}")
+
+  # Only if upgrade we can use history_max flag
+  if [ -n "$release" ] && [ -n "$history_max" ]; then
+    upgrade_args+=("--history-max=$history_max")
+  fi
+
+  logfile="/tmp/log"
+  mkdir -p /tmp
+
+  helm_args=("${upgrade_args[@]}" "${overridden_args[@]}")
+  helm_echo_args=("${upgrade_args[@]}" "${scrubbed_overridden_args[@]}")
+  helm_diff_args=("${upgrade_diff_args[@]}" "${overridden_args[@]}" "--suppress-secrets" "--include-tests" )
+
+  if [[ -d "$chart_full" ]]; then
+    helm_depup_args=("dependency" "update" "$chart_full")
+    helm_depup_echo_args=("dependency" "update" "$chart_full")
+    echo "Running command helm ${helm_depup_echo_args[@]}"
+    $helm_bin "${helm_depup_args[@]}" | tee "$logfile"
+  fi
+
+  if [ "$show_diff" = true ] ; then
+    echo "Release diff:"
+    $helm_bin diff "${helm_diff_args[@]}" | tee "$logfile"
+  fi
+
+  echo "Running command helm ${helm_echo_args[@]} | tee $logfile"
+  upgrade_result=$($helm_bin "${helm_args[@]}" | tee "$logfile")
+  echo "$upgrade_result"
+
+  deployed_release=$(echo $upgrade_result | head -n 1 | awk '{ print $2 }')
+
+  if [ -n "$wait" ] && [ "$wait" -gt "0" ]; then
+    echo "Waiting for $wait Seconds"
+    sleep $wait
+  fi
+}
+
+helm_uninstall() {
+  if [ -z "$release" ]; then
+    echo "invalid payload (missing release if uninstall=true)"
+    exit 1
+  fi
+
+  echo "Uninstalling the release $release..."
+  uninstall_args=("uninstall")
+  if [ "$debug" = true ]; then
+    uninstall_args+=("--dry-run" "--debug")
+  fi
+
+  uninstall_args+=("$release" "--namespace=$namespace")
+  logfile="/tmp/log"
+  mkdir -p /tmp
+
+  echo "Running command helm ${uninstall_args[@]} | tee $logfile"
+  $helm_bin "${uninstall_args[@]}" | tee $logfile
+}
+
+helm_test() {
+  if [ -z "$release" ]; then
+    echo "invalid payload (missing release if test=true)"
+    exit 1
+  fi
+  
+  if [ "$debug" = true ]; then
+    test_args+=("--debug")
+  fi
+  
+  test_args+=("--namespace=$namespace" "test" "$release" "--timeout=$timeout")
+ 
+  if [ "$test_logs" = true ] ; then
+    test_args+=("--logs")
+  fi
+
+  logfile="/tmp/log"
+  mkdir -p /tmp
+
+  echo "Running command helm ${test_args[@]} | tee $logfile"
+  $helm_bin ${test_args[@]} | tee $logfile
+}
+
+if [ "$uninstall" = true ]; then
+  helm_uninstall
+
+  if [ "$delete_namespace" = true ] && [ -n "$namespace" ] && [ $debug = false ]; then
+    echo "Deleting the namespace $namespace..."
+    logfile="/tmp/log"
+    kubectl delete namespaces "$namespace" | tee "$logfile"
+  fi
+
+  result="$(jq -n "{version:{release:\"$release\", uninstalled: \"true\"}, metadata: [{name: \"release\", value: \"$release\"}]}")"
+  echo "$result" | jq -s add  >&3
+elif [ "$test" = true ]; then
+  helm_test
+  result="$(jq -n "{version:{release:\"$release\", tested: \"true\"}, metadata: [{name: \"release\", value: \"$release\"}]}")"
+  echo "$result" | jq -s add  >&3
+elif [ "$replace" = true ]; then
+  helm_uninstall
+  helm_upgrade
+  result="$(jq -n "{version:{release:\"$release\", tested: \"true\"}, metadata: [{name: \"release\", value: \"$release\"}]}")"
+  echo "$result" | jq -s add  >&3
+else
+  echo "Installing $release"
+  helm_upgrade
+
+  if [ "$debug" != "true" ]; then
+    # If release is empty
+    if [ -z "$release" ]; then
+      release=$deployed_release
+    fi
+    deployed=$(current_deployed "$release")
+    revision=$(echo $deployed | awk '{ print $1 }')
+    chart=$(echo $deployed | awk '{ print $8 }')
+    echo "Deployed revision $revision of $release"
+    result="$(jq -n "{version:{release:\"$release\", revision:\"$revision\"}, metadata: [{name: \"release\", value: \"$release\"},{name: \"revision\", value: \"$revision\"},{name: \"chart\", value: \"$chart\"}]}")"
+    echo "$result" | jq -s add  >&3
+  else
+    echo "Debug was set to ${debug}; no release was performed. | tee $logfile"
+    echo '{"version": {"revision": "N/A", "release": "N/A"}}' >&3
+  fi
+fi
