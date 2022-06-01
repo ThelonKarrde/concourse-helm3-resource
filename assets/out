@@ -1,6 +1,7 @@
 #!/bin/bash
 
 set -e
+set -x
 set -o pipefail
 
 exec 3>&1 # make stdout available as fd 3 for the result
@@ -221,13 +222,13 @@ helm_upgrade() {
 
   if [ "$show_diff" = true ] ; then
     echo "Release diff:"
-    echo "Running command helm diff ${helm_echo_args[@]}"
+    echo "Running command helm diff ${helm_diff_args[@]}"
     $helm_bin diff "${helm_diff_args[@]}" | tee "$logfile"
   fi
 
-  echo "Running command helm ${helm_echo_args[@]} | tee $logfile"
-  upgrade_result=$($helm_bin "${helm_args[@]}" | tee "$logfile")
-  echo "$upgrade_result"
+  # echo "Running command helm ${helm_echo_args[@]} | tee $logfile"
+  # upgrade_result=$($helm_bin "${helm_args[@]}" | tee "$logfile")
+  # echo "$upgrade_result"
 
   deployed_release=$(echo $upgrade_result | head -n 1 | awk '{ print $2 }')
 
