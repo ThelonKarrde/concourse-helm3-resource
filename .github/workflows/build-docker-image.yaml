@@ -38,5 +38,5 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: |
-            ghcr.io/ThelonKarrde/concourse-helm3-resource:latest
-            ghcr.io/ThelonKarrde/concourse-helm3-resource:${{ steps.set-version.outputs.result }}
+            ghcr.io/thelonkarrde/concourse-helm3-resource:latest
+            ghcr.io/thelonkarrde/concourse-helm3-resource:${{ steps.set-version.outputs.result }}
