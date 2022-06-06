@@ -125,7 +125,7 @@ filter_output() {
     fi
 
     if [ "$hidden" != 'false' ]; then
-      LOG="$(echo "$LOG" | sed "s/[\s\S]*value: $value/value: ***hidden****/g")"
+      LOG="$(echo "$LOG" | sed "s/[\s\S]*$value/value: ***hidden****/g")"
     fi
   done < <(jq -j '.params.override_values[]? | if has("key") and (has("value") or has("path")) then (.key, .value // "", .path // "", .hide // false, .type, .verbatim // false) else empty end | tostring + "\u0000"'  < "$payload")
   echo "$LOG"
