@@ -1,5 +1,5 @@
 FROM alpine/k8s:1.22.6
-LABEL maintainer "Yann David (@Typositoire) <davidyann88@gmail>"
+LABEL maintainer "Aliaksandr Shulyak (@ThelonKarrde) <alex.shulyak.v@gmail.com>"
 
 #Versions for gcloud,kubectl,doctl
 ARG GCLOUD_VERSION=327.0.0

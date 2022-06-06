@@ -1,6 +1,0 @@
-make --dry-run --always-make --keep-going --print-directory
-make: Entering directory `/Users/riv/Documents/work/storage/ThelonKarrde/concourse-helm3-resource'
-docker build --tag YOUR_DOCKER_HOST_HERE/concourse-helm3:release-candidate .
-docker push YOUR_DOCKER_HOST_HERE/concourse-helm3
-make: Leaving directory `/Users/riv/Documents/work/storage/ThelonKarrde/concourse-helm3-resource'
- 
