@@ -4,7 +4,7 @@ Deploy [Helm Charts](https://github.com/helm/helm) from [Concourse](https://conc
 
 Heavily based on the work of [`Typositoire/concourse-helm3-resource`][Typositoire].
 
-[Typositoire]: https://github.com/Typositoire/concourse-helm-resource
+[Typositoire]: https://github.com/Typositoire/concourse3-helm-resource
 
 ## Docker Image
 You can pull the resource image from [`ThelonKarrde/concourse-helm3-resource`][github packages].
