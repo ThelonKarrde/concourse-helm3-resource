@@ -112,7 +112,7 @@ set_overridden_values() {
 }
 
 filter_output() {
-  LOG=$1
+  LOG="$1"
   while read -r -d '' key && read -r -d '' value && read -r -d '' path && read -r -d '' hidden && read -r -d '' type && read -r -d '' verbatim; do
     if [ -n "$path" ]; then
       value="$(< "$source/$path")"
