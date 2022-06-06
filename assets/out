@@ -200,7 +200,7 @@ helm_diff() {
   echo "Release diff:"
   echo "Running command helm diff ${helm_echo_args[@]}"
   diff_result=$($helm_bin diff "${helm_diff_args[@]}" | tee "$logfile")
-  filtered_result = filter_output $diff_result
+  filtered_result=$(filter_output "$diff_result")
   echo "$filtered_result"
 }
 
