@@ -111,6 +111,24 @@ set_overridden_values() {
   done < <(jq -j '.params.override_values[]? | if has("key") and (has("value") or has("path")) then (.key, .value // "", .path // "", .hide // false, .type, .verbatim // false) else empty end | tostring + "\u0000"'  < $payload)
 }
 
+filter_output() {
+  LOG=$1
+  while read -r -d '' key && read -r -d '' value && read -r -d '' path && read -r -d '' hidden && read -r -d '' type && read -r -d '' verbatim; do
+    if [ -n "$path" ]; then
+      value="$(< "$source/$path")"
+    fi
+
+    if [ "$verbatim" != 'false' ]; then
+      value="${value/\\/\\\\}"
+    fi
+
+    if [ "$hidden" != 'false' ]; then
+      LOG=$(echo $LOG | sed "s/[\s\S]*value: $value/value: ***hidden****/g")
+    fi
+  done < <(jq -j '.params.override_values[]? | if has("key") and (has("value") or has("path")) then (.key, .value // "", .path // "", .hide // false, .type, .verbatim // false) else empty end | tostring + "\u0000"'  < $payload)
+  return $LOG
+}
+
 current_deployed() {
   local release="$1"
   # The rest LGTM but we need --max 20 to get the last DEPLOYED release and not end up with a rolled back release being the last one.
@@ -182,7 +200,8 @@ helm_diff() {
   echo "Release diff:"
   echo "Running command helm diff ${helm_echo_args[@]}"
   diff_result=$($helm_bin diff "${helm_diff_args[@]}" | tee "$logfile")
-  echo "$diff_result"
+  filtered_result = filter_output $diff_result
+  echo "$filtered_result"
 }
 
 helm_upgrade() {
