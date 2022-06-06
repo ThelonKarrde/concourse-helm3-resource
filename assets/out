@@ -176,11 +176,11 @@ helm_diff() {
   logfile="/tmp/log"
   mkdir -p /tmp
 
-  helm_echo_args=("${upgrade_args[@]}" "${scrubbed_overridden_args[@]}")
   helm_diff_args=("${diff_args[@]}" "${overridden_args[@]}" "--suppress-secrets" "--include-tests" )
+  helm_echo_args=("${helm_diff_args[@]}" "${scrubbed_overridden_args[@]}")
 
   echo "Release diff:"
-  echo "Running command helm diff ${helm_diff_args[@]}"
+  echo "Running command helm diff ${helm_echo_args[@]}"
   diff_result=$($helm_bin diff "${helm_diff_args[@]}" | tee "$logfile")
   echo "$diff_result"
 }
