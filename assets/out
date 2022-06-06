@@ -357,6 +357,7 @@ helm_test() {
 if [ "$diff_only" = true ]; then
   helm_diff
   result="$(jq -n "{version:{release:\"$release\", diff_shown: \"true\"}, metadata: [{name: \"release\", value: \"$release\"}]}")"
+  echo "$result" | jq -s add  >&3
 elif [ "$uninstall" = true ]; then
   helm_uninstall
   if [ "$delete_namespace" = true ] && [ -n "$namespace" ] && [ $debug = false ]; then

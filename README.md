@@ -2,7 +2,7 @@
 
 Deploy [Helm Charts](https://github.com/helm/helm) from [Concourse](https://concourse-ci.org/).
 
-Heavily based on the work of [`Typositoire/concourse-helm-resource`][Typositoire].
+Heavily based on the work of [`Typositoire/concourse-helm3-resource`][Typositoire].
 
 [Typositoire]: https://github.com/Typositoire/concourse-helm-resource
 
@@ -102,6 +102,7 @@ Deploy an helm chart
 -   `kubeconfig`: _Optional._ String containing a kubeconfig. Overrides `kubeconfig_path` and source configuration for cluster, token, and admin config.
 -   `kubeconfig_path`: _Optional._ File containing a kubeconfig. Overrides source configuration for cluster, token, and admin config.
 -   `show_diff`: _Optional._ Show the diff that is applied if upgrading an existing successful release. (Default: false)
+-   `diff_only`: _Optional._ Only shows the diff of what will be applied. No actual upgrade/install process in place. (Default: false)
 -   `skip_missing_values:` _Optional._ Missing values files are skipped if they are specified in the values but do not exist. (Default false)
 
 ## Example
