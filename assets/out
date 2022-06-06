@@ -123,10 +123,10 @@ filter_output() {
     fi
 
     if [ "$hidden" != 'false' ]; then
-      LOG=$(echo $LOG | sed "s/[\s\S]*value: $value/value: ***hidden****/g")
+      LOG="$(echo $LOG | sed "s/[\s\S]*value: $value/value: ***hidden****/g")"
     fi
   done < <(jq -j '.params.override_values[]? | if has("key") and (has("value") or has("path")) then (.key, .value // "", .path // "", .hide // false, .type, .verbatim // false) else empty end | tostring + "\u0000"'  < $payload)
-  return $LOG
+  echo "$LOG"
 }
 
 current_deployed() {
@@ -195,7 +195,7 @@ helm_diff() {
   mkdir -p /tmp
 
   helm_diff_args=("${diff_args[@]}" "${overridden_args[@]}" "--suppress-secrets" "--include-tests" )
-  helm_echo_args=("${helm_diff_args[@]}" "${scrubbed_overridden_args[@]}")
+  helm_echo_args=("${diff_args[@]}" "${scrubbed_overridden_args[@]}" "--suppress-secrets" "--include-tests")
 
   echo "Release diff:"
   echo "Running command helm diff ${helm_echo_args[@]}"
@@ -247,7 +247,7 @@ helm_upgrade() {
   if [ "$debug" == "true" ]; then
     upgrade_args+=("--debug")
     upgrade_args+=("--dry-run")
-    #upgrade_diff_args+=("--dry-run")
+    upgrade_diff_args+=("--dry-run")
   fi
 
   if [ -n "$version" ]; then
