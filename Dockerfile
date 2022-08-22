@@ -1,5 +1,5 @@
-FROM alpine/k8s:1.22.6
-LABEL maintainer "Aliaksandr Shulyak (@ThelonKarrde) <alex.shulyak.v@gmail.com>"
+FROM alpine/k8s:1.23.7
+LABEL maintainer "Aliaksandr Shulyak (@ThelonKarrde) <aliaksandr.shulyak@proton.me"
 
 #Versions for gcloud,kubectl,doctl
 ARG GCLOUD_VERSION=327.0.0
