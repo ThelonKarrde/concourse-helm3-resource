@@ -12,8 +12,8 @@ ENV PATH $PATH:/usr/local/gcloud/google-cloud-sdk/bin
 RUN apk add --update --upgrade --no-cache jq bash curl git gettext libintl py-pip
 
 #install gcloud
-RUN wget https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-sdk-${GCLOUD_VERSION}-linux-x86_64.tar.gz \
-    -O /tmp/google-cloud-sdk.tar.gz | bash
+#RUN wget https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-sdk-${GCLOUD_VERSION}-linux-x86_64.tar.gz \
+#    -O /tmp/google-cloud-sdk.tar.gz | bash
 
 RUN mkdir -p /usr/local/gcloud \
     && tar -C /usr/local/gcloud -xvzf /tmp/google-cloud-sdk.tar.gz \
